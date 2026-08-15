@@ -534,13 +534,17 @@ final class BuddyController {
             return
         }
 
+        // Checked even when he has not moved: the room above him also changes
+        // when the screen does, and a stale answer points his speech bubble the
+        // wrong way.
+        updateBubbleSide()
+
         let target = CGPoint(x: sillX(on: ledge, box: box), y: feetY(on: ledge, box: box))
         let current = characterOrigin(forPanel: panel.frame.origin)
         guard hypot(target.x - current.x, target.y - current.y) > 0.5 else { return }
 
         // Snap rather than walk: he is standing on it, so he moves with it.
         panel.setFrameOrigin(clamped(panelOrigin(forCharacter: target), size: panel.frame.size))
-        updateBubbleSide()
         savePosition(force: false)
     }
 
