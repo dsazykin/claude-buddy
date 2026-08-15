@@ -724,6 +724,9 @@ final class BuddyController {
         let now = Date()
         guard force || now.timeIntervalSince(lastPositionSave) > 1 else { return }
         lastPositionSave = now
-        preferences.position = panel.frame.origin
+        // His own position, not the panel's: the gap between the two changes
+        // whenever the speech bubble swaps sides, and `start` reads it back the
+        // same way.
+        preferences.position = characterOrigin(forPanel: panel.frame.origin)
     }
 }

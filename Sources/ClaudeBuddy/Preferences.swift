@@ -139,7 +139,9 @@ final class Preferences {
         set { set(newValue, Key.sleepAfterMinutes) }
     }
 
-    /// Saved bottom-left origin of the panel, in screen coordinates.
+    /// Saved bottom-left corner of the *character*, in screen coordinates —
+    /// not of the panel around him, whose offset changes as the speech bubble
+    /// swaps sides.
     var position: CGPoint? {
         get {
             guard defaults.bool(forKey: Key.hasPosition) else { return nil }
