@@ -344,7 +344,7 @@ final class BuddyController {
     private func windowSill() -> CGPoint? {
         let box = characterBoxInPanel()
         let candidates = WindowScanner.ledges(excluding: getpid())
-            .filter { $0.frame.width > box.width + 40 }
+            .filter { standable($0, box: box) }
         guard !candidates.isEmpty else { return nil }
 
         // Weighted toward the front of the window list, so he tends to sit on
@@ -396,6 +396,16 @@ final class BuddyController {
         return false
     }
 
+    /// Whether he can actually stand on a window: wide enough to hold him, and
+    /// with enough clear space above it that the menu bar — which draws above
+    /// him — does not cut him in half.
+    private func standable(_ ledge: Ledge, box: CGRect) -> Bool {
+        guard ledge.frame.width > box.width + 40 else { return false }
+        let screen = NSScreen.screens.first { $0.frame.intersects(ledge.frame) } ?? NSScreen.main
+        guard let screen else { return false }
+        return ledge.topEdge + box.height <= screen.visibleFrame.maxY
+    }
+
     private func sillX(on ledge: Ledge, box: CGRect) -> CGFloat {
         ledge.frame.minX + sillFraction * (ledge.frame.width - box.width)
     }
@@ -412,7 +422,7 @@ final class BuddyController {
         let snap: CGFloat = 26
 
         let ledge = WindowScanner.ledges(excluding: getpid())
-            .filter { $0.frame.width > box.width + 40 }
+            .filter { standable($0, box: box) }
             .filter { centreX > $0.frame.minX && centreX < $0.frame.maxX }
             .filter { abs($0.topEdge - feet.y) < snap }
             .min { abs($0.topEdge - feet.y) < abs($1.topEdge - feet.y) }
@@ -449,7 +459,7 @@ final class BuddyController {
 
         let box = characterBoxInPanel()
         guard let ledge = WindowScanner.ledge(for: id, excluding: getpid()),
-              ledge.frame.width > box.width + 40 else {
+              standable(ledge, box: box) else {
             // His window closed or went away: step down onto the nearest edge.
             spot = .edge(.bottom)
             walk(to: screenEdge())
