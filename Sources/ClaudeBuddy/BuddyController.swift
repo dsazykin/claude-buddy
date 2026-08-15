@@ -97,8 +97,9 @@ final class BuddyController {
         self.container = container
 
         // Saved as his own position, so it does not depend on which side the
-        // bubble happened to be on when he was last put away.
-        let restored = preferences.position.map { panelOrigin(forCharacter: $0) } ?? defaultPosition()
+        // bubble happened to be on when he was last put away. With nothing
+        // saved he turns up standing on one of your windows.
+        let restored = preferences.position.map { panelOrigin(forCharacter: $0) } ?? spawnPosition()
         panel.setFrameOrigin(clamped(restored, size: size))
         updateBubbleSide()
 
@@ -363,7 +364,7 @@ final class BuddyController {
 
         sillFraction = CGFloat.random(in: 0.08...0.92)
         spot = .windowSill(ledge.windowID)
-        return CGPoint(x: sillX(on: ledge, box: box), y: ledge.topEdge)
+        return CGPoint(x: sillX(on: ledge, box: box), y: feetY(on: ledge, box: box))
     }
 
     /// Along the menu bar, above the Dock, or tucked against a side border.
@@ -405,14 +406,20 @@ final class BuddyController {
         return false
     }
 
-    /// Whether he can actually stand on a window: wide enough to hold him, and
-    /// with enough clear space above it that the menu bar — which draws above
-    /// him — does not cut him in half.
+    /// Whether he can stand on a window at all: it just has to be wide enough
+    /// to hold him.
     private func standable(_ ledge: Ledge, box: CGRect) -> Bool {
-        guard ledge.frame.width > box.width + 40 else { return false }
+        ledge.frame.width > box.width + 40
+    }
+
+    /// Where his feet go on a window: its top edge, pulled down far enough that
+    /// the menu bar — which draws above him — cannot cut across him. On a
+    /// maximised window that leaves him standing in the title bar, which is
+    /// where you would expect him to sit anyway.
+    private func feetY(on ledge: Ledge, box: CGRect) -> CGFloat {
         let screen = NSScreen.screens.first { $0.frame.intersects(ledge.frame) } ?? NSScreen.main
-        guard let screen else { return false }
-        return ledge.topEdge + box.height <= screen.visibleFrame.maxY
+        guard let screen else { return ledge.topEdge }
+        return min(ledge.topEdge, screen.visibleFrame.maxY - box.height)
     }
 
     private func sillX(on ledge: Ledge, box: CGRect) -> CGFloat {
@@ -444,7 +451,7 @@ final class BuddyController {
         sillFraction = max(0, min(1, (feet.x - ledge.frame.minX) / max(1, ledge.frame.width - box.width)))
         spot = .windowSill(ledge.windowID)
         // Line his feet up with the edge he just caught.
-        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: CGPoint(x: feet.x, y: ledge.topEdge)),
+        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: CGPoint(x: feet.x, y: feetY(on: ledge, box: box))),
                                      size: panel.frame.size))
         state.say("comfy up here")
     }
@@ -475,7 +482,7 @@ final class BuddyController {
             return
         }
 
-        let target = CGPoint(x: sillX(on: ledge, box: box), y: ledge.topEdge)
+        let target = CGPoint(x: sillX(on: ledge, box: box), y: feetY(on: ledge, box: box))
         let current = characterOrigin(forPanel: panel.frame.origin)
         guard hypot(target.x - current.x, target.y - current.y) > 0.5 else { return }
 
@@ -679,6 +686,15 @@ final class BuddyController {
         let box = characterBoxInPanel()
         let centre = CGPoint(x: origin.x + box.midX, y: origin.y + box.midY)
         return NSScreen.screens.first { $0.frame.contains(centre) } ?? NSScreen.main
+    }
+
+    /// Where he turns up the first time: standing on one of your windows if
+    /// there is one to stand on, otherwise his corner.
+    private func spawnPosition() -> CGPoint {
+        if let target = windowSill() {
+            return panelOrigin(forCharacter: target)
+        }
+        return defaultPosition()
     }
 
     private func defaultPosition() -> CGPoint {
