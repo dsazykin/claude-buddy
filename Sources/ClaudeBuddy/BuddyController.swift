@@ -324,6 +324,15 @@ final class BuddyController {
         }
     }
 
+    /// Send him off to find a new spot right now, rather than waiting for him
+    /// to get the idea himself.
+    func moveSomewhereElse() {
+        guard preferences.visible, !state.isDragging else { return }
+        stopWalking()
+        walk(to: nextSpot())
+        scheduleWander()
+    }
+
     private func wanderNow() {
         guard preferences.hangOut, preferences.visible, !preferences.followCursor else { return }
         guard !state.isDragging, state.mood != .sleeping, !state.isWalking else { return }

@@ -63,6 +63,8 @@ Menu options:
   is behind him. Control him from the menu bar while this is on.
 - **Size** — small, medium, large.
 - **Layer** — float above your windows, or sit on the desktop behind everything.
+- **Move Somewhere Else** — send him off to find a new spot now, instead of
+  waiting for him to get the idea himself.
 - **Reset Position** — bring him back to the bottom-right corner.
 - **Edit Quips…** — opens the file described below.
 - **Launch At Login** — registers the app as a login item.

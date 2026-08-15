@@ -74,6 +74,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         visibleItem = item("Show Buddy", #selector(toggleVisible))
         menu.addItem(visibleItem)
+        menu.addItem(item("Move Somewhere Else", #selector(moveSomewhereElse)))
         menu.addItem(item("Reset Position", #selector(resetPosition)))
         menu.addItem(item("Edit Quips…", #selector(editQuips)))
 
@@ -127,6 +128,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleReact() { preferences.reactToClaude.toggle() }
     @objc private func toggleClickThrough() { preferences.clickThrough.toggle() }
     @objc private func toggleVisible() { preferences.visible.toggle() }
+    @objc private func moveSomewhereElse() { controller.moveSomewhereElse() }
     @objc private func resetPosition() { controller.resetPosition() }
 
     @objc private func changeSize(_ sender: NSMenuItem) {
