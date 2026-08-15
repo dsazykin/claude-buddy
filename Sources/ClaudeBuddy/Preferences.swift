@@ -75,7 +75,9 @@ final class Preferences {
         defaults.register(defaults: [
             Key.watchCursor: true,
             Key.followCursor: false,
-            Key.hangOut: true,
+            // Off by default: he stays where he is put, and moves only when you
+            // drag him or ask him to.
+            Key.hangOut: false,
             Key.reactToClaude: true,
             Key.clickThrough: false,
             Key.visible: true,
@@ -101,8 +103,8 @@ final class Preferences {
         set { set(newValue, Key.followCursor) }
     }
 
-    /// Whether he wanders off to loiter along the menu bar, the Dock and the
-    /// screen edges of his own accord.
+    /// Whether he goes looking for a new spot on his own. Off by default: he
+    /// sits where you put him.
     var hangOut: Bool {
         get { defaults.bool(forKey: Key.hangOut) }
         set { set(newValue, Key.hangOut) }

@@ -54,10 +54,9 @@ Menu options:
 - **Watch The Cursor** — his eyes follow the pointer and he leans toward it.
 - **Follow The Cursor** — he also walks after it when it gets far away, and
   stops at a polite distance. Off by default.
-- **Hang Around The Desktop** — every few minutes he ambles off to a new spot.
-  Usually that is the top edge of one of your windows; otherwise the menu bar,
-  above the Dock, or against a side border. On by default; turning on **Follow
-  The Cursor** takes precedence over it.
+- **Hang Around The Desktop** — lets him go looking for a new spot on his own
+  every few minutes. **Off by default**: normally he stays exactly where you put
+  him. Turning on **Follow The Cursor** takes precedence over it.
 - **React To Claude Code** — see below.
 - **Click Through Him** — he becomes decorative; clicks pass through to whatever
   is behind him. Control him from the menu bar while this is on.
