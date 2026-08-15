@@ -11,10 +11,11 @@ extension Color {
 }
 
 enum Palette {
-    /// Sampled from the reference artwork. He is deliberately not shaded: the
-    /// original is one flat colour, and a gradient reads as a different
-    /// character.
-    static let body = Color(hex: 0xF05B45)
+    /// Claude coral. The reference artwork is a brighter tomato (0xF05B45),
+    /// which is loud at the size he is actually drawn, so he is toned down to
+    /// the softer brand colour. He is deliberately not shaded: the original is
+    /// one flat colour, and a gradient reads as a different character.
+    static let body = Color(hex: 0xD97757)
     static let ink = Color(hex: 0x140C0A)
     static let cream = Color(hex: 0xFBF3EA)
     static let blush = Color(hex: 0xE0654A)
