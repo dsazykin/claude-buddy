@@ -391,6 +391,11 @@ final class BuddyController {
         }
     }
 
+    private var isOnSill: Bool {
+        if case .windowSill = spot { return true }
+        return false
+    }
+
     private func sillX(on ledge: Ledge, box: CGRect) -> CGFloat {
         ledge.frame.minX + sillFraction * (ledge.frame.width - box.width)
     }
@@ -670,8 +675,11 @@ final class BuddyController {
     private func clamped(_ origin: CGPoint, size: CGSize) -> CGPoint {
         guard let screen = currentScreen(for: origin) else { return origin }
 
-        // On the desktop layer he may sit under the menu bar and Dock.
-        let bounds = preferences.layer == .desktop ? screen.frame : screen.visibleFrame
+        // On the desktop layer he may sit under the menu bar and Dock. So may he
+        // when standing on a window: that window is on screen by definition, and
+        // keeping him inside the Dock/menu-bar margin would sink his feet below
+        // the edge he is supposed to be standing on.
+        let bounds = (preferences.layer == .desktop || isOnSill) ? screen.frame : screen.visibleFrame
         let box = characterBoxInPanel()
         let slackX = box.width * 0.34
         let slackY = box.height * 0.34
