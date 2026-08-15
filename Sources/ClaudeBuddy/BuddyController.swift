@@ -518,7 +518,7 @@ final class BuddyController {
     /// Unprompted little animations, so standing still is not completely static.
     private func scheduleIdleGesture() {
         idleTimer?.invalidate()
-        let delay = Double.random(in: 7...18)
+        let delay = Double.random(in: 16...40)
         idleTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.performIdleGesture()
             self?.scheduleIdleGesture()
