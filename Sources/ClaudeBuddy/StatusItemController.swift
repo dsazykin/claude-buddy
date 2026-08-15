@@ -11,6 +11,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var watchItem: NSMenuItem!
     private var followItem: NSMenuItem!
+    private var hangOutItem: NSMenuItem!
     private var reactItem: NSMenuItem!
     private var clickThroughItem: NSMenuItem!
     private var visibleItem: NSMenuItem!
@@ -42,9 +43,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         watchItem = item("Watch The Cursor", #selector(toggleWatch))
         followItem = item("Follow The Cursor", #selector(toggleFollow))
+        hangOutItem = item("Hang Around The Edges", #selector(toggleHangOut))
         reactItem = item("React To Claude Code", #selector(toggleReact))
         clickThroughItem = item("Click Through Him", #selector(toggleClickThrough))
-        [watchItem, followItem, reactItem, clickThroughItem].forEach { menu.addItem($0!) }
+        [watchItem, followItem, hangOutItem, reactItem, clickThroughItem].forEach { menu.addItem($0!) }
         menu.addItem(.separator())
 
         let sizeMenu = NSMenu()
@@ -97,12 +99,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func refreshStates() {
         watchItem.state = preferences.watchCursor ? .on : .off
         followItem.state = preferences.followCursor ? .on : .off
+        hangOutItem.state = preferences.hangOut ? .on : .off
         reactItem.state = preferences.reactToClaude ? .on : .off
         clickThroughItem.state = preferences.clickThrough ? .on : .off
         visibleItem.state = preferences.visible ? .on : .off
 
         // Following only means anything if he can see the cursor at all.
         followItem.isEnabled = preferences.watchCursor
+        // Chasing the cursor and loitering on an edge would fight each other.
+        hangOutItem.isEnabled = !preferences.followCursor
 
         for (size, entry) in sizeItems {
             entry.state = preferences.size == size ? .on : .off
@@ -118,6 +123,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func saySomething() { controller.speakRandomly() }
     @objc private func toggleWatch() { preferences.watchCursor.toggle() }
     @objc private func toggleFollow() { preferences.followCursor.toggle() }
+    @objc private func toggleHangOut() { preferences.hangOut.toggle() }
     @objc private func toggleReact() { preferences.reactToClaude.toggle() }
     @objc private func toggleClickThrough() { preferences.clickThrough.toggle() }
     @objc private func toggleVisible() { preferences.visible.toggle() }

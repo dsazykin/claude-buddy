@@ -3,11 +3,13 @@ import AppKit
 enum BuddySize: String, CaseIterable {
     case small, medium, large
 
+    /// Deliberately small: he is a desk pet loitering at the edge of the screen,
+    /// not a window. Medium puts him at roughly 66 x 72 points.
     var scale: CGFloat {
         switch self {
-        case .small: return 0.72
-        case .medium: return 1.0
-        case .large: return 1.35
+        case .small: return 0.36
+        case .medium: return 0.50
+        case .large: return 0.68
         }
     }
 
@@ -57,6 +59,7 @@ final class Preferences {
     private enum Key {
         static let watchCursor = "watchCursor"
         static let followCursor = "followCursor"
+        static let hangOut = "hangOut"
         static let reactToClaude = "reactToClaude"
         static let clickThrough = "clickThrough"
         static let visible = "visible"
@@ -72,6 +75,7 @@ final class Preferences {
         defaults.register(defaults: [
             Key.watchCursor: true,
             Key.followCursor: false,
+            Key.hangOut: true,
             Key.reactToClaude: true,
             Key.clickThrough: false,
             Key.visible: true,
@@ -95,6 +99,13 @@ final class Preferences {
     var followCursor: Bool {
         get { defaults.bool(forKey: Key.followCursor) }
         set { set(newValue, Key.followCursor) }
+    }
+
+    /// Whether he wanders off to loiter along the menu bar, the Dock and the
+    /// screen edges of his own accord.
+    var hangOut: Bool {
+        get { defaults.bool(forKey: Key.hangOut) }
+        set { set(newValue, Key.hangOut) }
     }
 
     var reactToClaude: Bool {

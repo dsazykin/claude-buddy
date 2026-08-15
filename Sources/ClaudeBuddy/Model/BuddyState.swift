@@ -19,9 +19,21 @@ final class BuddyState: ObservableObject {
     @Published var speech: Speech?
     @Published var scale: CGFloat = 1
 
+    /// True while he is actually travelling somewhere under his own steam.
+    @Published var isWalking = false
+    /// Direction of travel: -1 left, +1 right, 0 standing still.
+    @Published var facing: CGFloat = 0
+    /// Bubble hangs below him when he is perched too high for it to fit above.
+    @Published var bubbleBelow = false
+
+    /// A one-off bit of business he is doing right now, and when it started.
+    @Published private(set) var gesture: Gesture?
+    private(set) var gestureStart = Date.distantPast
+
     private var speechCounter = 0
     private var speechDismissTimer: Timer?
     private var blinkTimer: Timer?
+    private var gestureTimer: Timer?
 
     // MARK: - Speech
 
@@ -48,6 +60,58 @@ final class BuddyState: ObservableObject {
     }
 
     var isSpeaking: Bool { speech != nil }
+
+    // MARK: - Idle gestures
+
+    /// Little unprompted bits of business, so standing around still has some
+    /// life in it. Each one is a pure function of elapsed time in the views.
+    enum Gesture: CaseIterable {
+        /// A small jump on the spot.
+        case hop
+        /// Draws himself up tall and settles back down.
+        case stretch
+        /// A quick side-to-side shimmy.
+        case wiggle
+        /// Looks off to one side, then the other.
+        case glance
+        /// Two quick blinks.
+        case blinkTwice
+        /// Eyes shut, mouth wide open.
+        case yawn
+
+        var duration: TimeInterval {
+            switch self {
+            case .hop: return 0.55
+            case .stretch: return 1.5
+            case .wiggle: return 0.9
+            case .glance: return 2.2
+            case .blinkTwice: return 1.0
+            case .yawn: return 1.7
+            }
+        }
+    }
+
+    func perform(_ gesture: Gesture) {
+        gestureTimer?.invalidate()
+        gestureStart = Date()
+        self.gesture = gesture
+        gestureTimer = Timer.scheduledTimer(withTimeInterval: gesture.duration, repeats: false) { [weak self] _ in
+            self?.gesture = nil
+        }
+    }
+
+    func cancelGesture() {
+        gestureTimer?.invalidate()
+        gestureTimer = nil
+        gesture = nil
+    }
+
+    /// How far through the current gesture we are, 0...1.
+    func gestureProgress(at date: Date) -> CGFloat {
+        guard let gesture else { return 0 }
+        let elapsed = date.timeIntervalSince(gestureStart)
+        return CGFloat(min(1, max(0, elapsed / gesture.duration)))
+    }
 
     // MARK: - Blinking
 
@@ -82,5 +146,6 @@ final class BuddyState: ObservableObject {
     deinit {
         speechDismissTimer?.invalidate()
         blinkTimer?.invalidate()
+        gestureTimer?.invalidate()
     }
 }

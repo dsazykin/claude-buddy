@@ -22,14 +22,15 @@ enum Mood: Equatable {
         }
     }
 
-    /// Degrees per second for the sparkle above his head.
-    var sparkleSpeed: Double {
+    /// Radians per second through the walk cycle: how fast his feet alternate.
+    /// A brisker mood walks with a quicker step.
+    var stepRate: Double {
         switch self {
-        case .sleeping: return 6
-        case .idle: return 22
-        case .curious: return 40
-        case .working: return 150
-        case .thinking: return 300
+        case .sleeping: return 5
+        case .idle: return 8
+        case .curious: return 9
+        case .working: return 10
+        case .thinking: return 11
         }
     }
 

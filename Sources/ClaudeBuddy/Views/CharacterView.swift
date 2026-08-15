@@ -1,251 +1,166 @@
 import SwiftUI
 
-/// The buddy himself, drawn in a 132 x 144 box.
+/// The buddy himself: a pixel character drawn in a 132 x 144 box.
+///
+/// The body is a sprite frame chosen from what he is doing; the eyes and mouth
+/// are separate layers over it, so blinking, glancing and yawning do not each
+/// need their own body frame. Everything is a pure function of `time`, `now` and
+/// the state.
 struct CharacterView: View {
     /// Wrapped animation clock, in seconds.
     let time: Double
+    /// Unwrapped clock, for measuring progress through a gesture.
+    let now: Date
     @ObservedObject var state: BuddyState
+
+    /// The sprite's drawing box: 12 x 8 cells at 11 points each. The rest of
+    /// the character box is headroom for sparkles and sleep "z"s.
+    private static let spriteSize = CGSize(width: 132, height: 88)
+    private static let cell: CGFloat = 11
 
     var body: some View {
         let mood: Mood = state.mood
-        let breath: CGFloat = CGFloat(sin(time * 2 * .pi / mood.breathPeriod))
-        let bob: CGFloat = breath * mood.bobAmplitude
+        let gesture: BuddyState.Gesture? = state.gesture
+        let progress: CGFloat = state.gestureProgress(at: now)
+        /// One arch of a gesture: 0 at each end, 1 in the middle.
+        let arch: CGFloat = gesture == nil ? 0 : sin(progress * .pi)
+
+        let walking: Bool = state.isWalking
         let dragging: Bool = state.isDragging
+        // Breathing, rounded to a whole point so he never sits between pixels.
+        let breath: CGFloat = round(CGFloat(sin(time * 2 * .pi / mood.breathPeriod)) * 0.6)
 
-        // Squash and stretch, anchored at the feet so he never floats.
-        let stretch: CGFloat = dragging ? 1.05 : 1 + breath * 0.030
-        let widen: CGFloat = dragging ? 0.97 : 1 - breath * 0.022
+        let hop: CGFloat = gesture == .hop ? -arch * Self.cell * 1.6 : 0
+        let walkBounce: CGFloat = walking ? -abs(CGFloat(sin(time * mood.stepRate))) * 2 : 0
+        let shuffle: CGFloat = gesture == .wiggle
+            ? round(CGFloat(sin(progress * 6 * .pi))) * Self.cell * 0.5
+            : 0
+        let stretch: CGFloat = gesture == .stretch ? 1 + arch * 0.14 : 1
 
-        ZStack {
-            groundShadow(breath: breath, dragging: dragging)
-
+        return ZStack {
             ZStack {
-                feet(dragging: dragging)
-                arms(time: time, mood: mood, dragging: dragging)
+                PixelShape(rows: bodyFrame(mood: mood, walking: walking,
+                                           dragging: dragging, gesture: gesture, arch: arch))
+                    .fill(Palette.body)
 
-                ZStack {
-                    bodyShell()
-                    face(mood: mood, dragging: dragging)
-                }
-                .scaleEffect(x: widen, y: stretch, anchor: .bottom)
+                eyes(mood: mood, dragging: dragging, gesture: gesture,
+                     progress: progress, arch: arch)
 
-                sparkles(time: time, mood: mood)
-
-                if mood == .sleeping {
-                    SleepZs(time: time)
-                        .offset(x: 34, y: -46)
+                if gesture == .yawn, arch > 0.3 {
+                    PixelShape(rows: Sprite.mouthOpen, ink: "o")
+                        .fill(Palette.ink)
                 }
             }
-            .offset(y: bob)
-            .rotationEffect(.degrees(state.tilt), anchor: .bottom)
+            .frame(width: Self.spriteSize.width, height: Self.spriteSize.height)
+            .scaleEffect(y: stretch, anchor: .bottom)
+            .offset(x: shuffle, y: hop + walkBounce + breath)
+
+            sparkles(time: time, mood: mood)
+
+            if mood == .sleeping {
+                sleepZs(time: time)
+            }
         }
         .frame(width: Layout.characterSize.width, height: Layout.characterSize.height)
     }
 
-    // MARK: - Pieces
+    // MARK: - Body
 
-    private func groundShadow(breath: CGFloat, dragging: Bool) -> some View {
-        let width: CGFloat = dragging ? 52 : 74 - breath * 4
-        return Ellipse()
-            .fill(Palette.shadow.opacity(dragging ? 0.10 : 0.18))
-            .frame(width: width, height: 12)
-            .blur(radius: 3)
-            .offset(y: 64)
-    }
-
-    private func bodyShell() -> some View {
-        ZStack {
-            BlobShape()
-                .fill(
-                    LinearGradient(
-                        colors: [Palette.shellTop, Palette.shellMid, Palette.shellBottom],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .overlay(
-                    BlobShape()
-                        .stroke(Palette.shellBottom.opacity(0.35), lineWidth: 1)
-                )
-
-            // Glossy top-left highlight.
-            Ellipse()
-                .fill(Color.white.opacity(0.20))
-                .frame(width: 42, height: 24)
-                .blur(radius: 6)
-                .offset(x: -16, y: -26)
+    private func bodyFrame(mood: Mood, walking: Bool, dragging: Bool,
+                           gesture: BuddyState.Gesture?, arch: CGFloat) -> [String] {
+        if dragging { return Sprite.dangling }
+        if gesture == .hop && arch > 0.25 { return Sprite.airborne }
+        if walking {
+            // Two frames a stride, which is what makes it read as walking
+            // rather than sliding.
+            return sin(time * mood.stepRate) > 0 ? Sprite.walkA : Sprite.walkB
         }
-        .frame(width: 100, height: 92)
-        .offset(y: 8)
-        .shadow(color: Palette.shadow.opacity(0.22), radius: 6, x: 0, y: 3)
+        return Sprite.stand
     }
 
-    private func face(mood: Mood, dragging: Bool) -> some View {
-        let look: CGSize = state.look
-        let eyeShift = CGSize(width: look.width * 3.5, height: look.height * 3.0)
+    // MARK: - Face
 
-        return ZStack {
-            EyeView(mood: mood, blinking: state.isBlinking, dragging: dragging, shift: eyeShift)
-                .offset(x: -19, y: -2)
-            EyeView(mood: mood, blinking: state.isBlinking, dragging: dragging, shift: eyeShift)
-                .offset(x: 19, y: -2)
+    private func eyes(mood: Mood, dragging: Bool, gesture: BuddyState.Gesture?,
+                      progress: CGFloat, arch: CGFloat) -> some View {
+        let shut = mood == .sleeping
+            || (gesture == .yawn && arch > 0.35)
+            || state.isBlinking
+            || (gesture == .blinkTwice && blinkingTwice(progress))
+        let frame = shut ? Sprite.eyesShut : Sprite.eyesOpen
 
-            Ellipse()
-                .fill(Palette.blush.opacity(0.22))
-                .frame(width: 14, height: 7)
-                .offset(x: -33, y: 12)
-            Ellipse()
-                .fill(Palette.blush.opacity(0.22))
-                .frame(width: 14, height: 7)
-                .offset(x: 33, y: 12)
-
-            MouthView(mood: mood, dragging: dragging)
-                .offset(x: look.width * 1.6, y: 15)
-        }
-        // Slight parallax so the whole face leans with the gaze.
-        .offset(x: look.width * 1.4, y: look.height * 1.2)
-    }
-
-    private func feet(dragging: Bool) -> some View {
-        let dangle: CGFloat = dragging ? 7 : 0
-        return ZStack {
-            Ellipse()
-                .fill(Palette.shellBottom)
-                .frame(width: 24, height: 12)
-                .rotationEffect(.degrees(dragging ? -14 : 0))
-                .offset(x: -17, y: 52 + dangle)
-            Ellipse()
-                .fill(Palette.shellBottom)
-                .frame(width: 24, height: 12)
-                .rotationEffect(.degrees(dragging ? 14 : 0))
-                .offset(x: 17, y: 52 + dangle)
-        }
-    }
-
-    private func arms(time: Double, mood: Mood, dragging: Bool) -> some View {
-        // Little nubs that paddle when he is working and flail when picked up.
-        let swing: CGFloat = mood.isBusy ? CGFloat(sin(time * 7)) * 16 : CGFloat(sin(time * 1.6)) * 4
-        let lift: CGFloat = dragging ? -26 : 0
-
-        return ZStack {
-            Capsule()
-                .fill(Palette.shellMid)
-                .frame(width: 15, height: 26)
-                .rotationEffect(.degrees(Double(-swing + lift)), anchor: .top)
-                .offset(x: -46, y: 4)
-            Capsule()
-                .fill(Palette.shellMid)
-                .frame(width: 15, height: 26)
-                .rotationEffect(.degrees(Double(swing - lift)), anchor: .top)
-                .offset(x: 46, y: 4)
-        }
-        .shadow(color: Palette.shadow.opacity(0.15), radius: 2, y: 1)
-    }
-
-    private func sparkles(time: Double, mood: Mood) -> some View {
-        let angle: Double = (time * mood.sparkleSpeed).truncatingRemainder(dividingBy: 360)
-        let pulse: CGFloat = 1 + CGFloat(sin(time * 3.4)) * (mood.isBusy ? 0.16 : 0.06)
-        let orbitOpacity: Double = mood.isBusy ? 0.95 : 0.0
-        let orbit: Double = (time * 140).truncatingRemainder(dividingBy: 360)
-
-        return ZStack {
-            SparkleShape()
-                .fill(Palette.sparkle)
-                .frame(width: 24, height: 24)
-                .rotationEffect(.degrees(angle))
-                .scaleEffect(pulse)
-                .shadow(color: Palette.sparkle.opacity(0.7), radius: 6)
-
-            ForEach(0..<2, id: \.self) { index in
-                SparkleShape()
-                    .fill(Palette.cream)
-                    .frame(width: 8, height: 8)
-                    .offset(y: -19)
-                    .rotationEffect(.degrees(orbit + Double(index) * 180))
-                    .opacity(orbitOpacity)
-            }
-        }
-        .offset(y: -56)
-    }
-}
-
-// MARK: - Eyes
-
-private struct EyeView: View {
-    let mood: Mood
-    let blinking: Bool
-    let dragging: Bool
-    let shift: CGSize
-
-    var body: some View {
-        if mood == .sleeping {
-            // Contented closed arc.
-            MouthShape(curve: 0.9)
-                .stroke(Palette.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                .frame(width: 13, height: 6)
+        // The sprite is symmetrical, so he "turns" by looking where he is going
+        // rather than by being mirrored. Glancing moves the eyes by whole cells;
+        // watching the cursor nudges them by a fraction of one.
+        let glance: CGFloat
+        if gesture == .glance {
+            glance = round(glanceCurve(progress)) * Self.cell
+        } else if state.isWalking {
+            glance = state.facing * Self.cell * 0.5
         } else {
-            let width: CGFloat = dragging ? 13 : 12
-            let height: CGFloat = dragging ? 16 : 14
-
-            ZStack {
-                Ellipse()
-                    .fill(Palette.ink)
-                    .frame(width: width, height: height)
-                Circle()
-                    .fill(Color.white.opacity(0.9))
-                    .frame(width: 3.6, height: 3.6)
-                    .offset(x: 2.4, y: -3.4)
-            }
-            .offset(shift)
-            .scaleEffect(y: blinking ? 0.10 : 1, anchor: .center)
+            glance = state.look.width * Self.cell * 0.45
         }
+
+        return PixelShape(rows: frame, ink: "o")
+            .fill(Palette.ink)
+            .offset(x: glance)
     }
-}
 
-// MARK: - Mouth
+    /// Two quick blinks: shut early in the gesture, and again just after halfway.
+    private func blinkingTwice(_ progress: CGFloat) -> Bool {
+        (progress > 0.10 && progress < 0.28) || (progress > 0.52 && progress < 0.70)
+    }
 
-private struct MouthView: View {
-    let mood: Mood
-    let dragging: Bool
-
-    var body: some View {
-        if dragging || mood == .curious {
-            // Surprised little "o".
-            Ellipse()
-                .fill(Palette.ink)
-                .frame(width: 9, height: dragging ? 11 : 9)
-        } else {
-            MouthShape(curve: curve)
-                .stroke(Palette.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
-                .frame(width: 22, height: 11)
+    /// -1 → +1 → 0, with pauses at each end.
+    private func glanceCurve(_ progress: CGFloat) -> CGFloat {
+        switch progress {
+        case ..<0.15: return -progress / 0.15
+        case ..<0.35: return -1
+        case ..<0.55: return -1 + (progress - 0.35) / 0.20 * 2
+        case ..<0.80: return 1
+        default: return 1 - (progress - 0.80) / 0.20
         }
     }
 
-    private var curve: CGFloat {
-        switch mood {
-        case .idle: return 0.9
-        case .curious: return 1.1
-        case .working: return 0.7
-        case .thinking: return 0.25
-        case .sleeping: return 0.5
-        }
-    }
-}
+    // MARK: - Sparkles
 
-// MARK: - Sleep
-
-private struct SleepZs: View {
-    let time: Double
-
-    var body: some View {
+    /// Three "z"s drifting up and to the right while he dozes.
+    private func sleepZs(time: Double) -> some View {
         ZStack {
             ForEach(0..<3, id: \.self) { index in
-                let phase = ((time * 0.42) + Double(index) * 0.34).truncatingRemainder(dividingBy: 1)
-                Text("z")
-                    .font(.system(size: 11 + CGFloat(phase) * 4, weight: .bold, design: .rounded))
-                    .foregroundColor(Palette.ink.opacity(0.55 * sin(phase * .pi)))
-                    .offset(x: CGFloat(phase) * 11, y: CGFloat(-phase) * 24)
+                let phase = ((time * 0.4) + Double(index) * 0.34).truncatingRemainder(dividingBy: 1)
+                let size = Self.cell * (1.1 + CGFloat(phase) * 0.5)
+
+                // His own colour rather than ink: these float clear of him, over
+                // whatever wallpaper happens to be behind.
+                PixelShape(rows: Sprite.sleepZ, ink: "o", columns: 3, lines: 5)
+                    .fill(Palette.body.opacity(0.85 * sin(phase * .pi)))
+                    .frame(width: size * 0.6, height: size)
+                    .offset(x: Self.cell * 3 + CGFloat(phase) * Self.cell * 1.6,
+                            y: -Self.spriteSize.height / 2 - CGFloat(phase) * Self.cell * 1.8)
             }
         }
+    }
+
+    /// Twinkles either side of him while a Claude Code session is working.
+    private func sparkles(time: Double, mood: Mood) -> some View {
+        let blink = sin(time * 4)
+        let size = Self.cell * 1.5
+
+        // He fills the full width of his box, so these go above his head rather
+        // than beside him, where they would be clipped.
+        return ZStack {
+            PixelShape(rows: Sprite.sparkle, ink: "o", columns: 3, lines: 3)
+                .fill(Palette.sparkle)
+                .frame(width: size, height: size)
+                .opacity(blink > 0 ? 1 : 0.45)
+                .offset(x: -Self.cell * 3.5, y: -Self.spriteSize.height / 2 - Self.cell)
+
+            PixelShape(rows: Sprite.sparkle, ink: "o", columns: 3, lines: 3)
+                .fill(Palette.sparkle)
+                .frame(width: size, height: size)
+                .opacity(blink > 0 ? 0.45 : 1)
+                .offset(x: Self.cell * 3.5, y: -Self.spriteSize.height / 2 - Self.cell * 0.4)
+        }
+        .opacity(mood.isBusy ? 1 : 0)
     }
 }
