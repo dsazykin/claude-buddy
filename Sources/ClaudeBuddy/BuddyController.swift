@@ -8,13 +8,20 @@ final class BuddyController {
     var contextMenu: (() -> NSMenu?)?
 
     /// An edge of the screen he likes to loiter against.
-    private enum Perch: CaseIterable {
+    private enum Edge: CaseIterable {
         /// Under the menu bar.
         case top
         /// Above the Dock.
         case bottom
         case left
         case right
+    }
+
+    /// Where he is currently living.
+    private enum Spot {
+        case edge(Edge)
+        /// Standing on the top edge of somebody else's window, riding it around.
+        case windowSill(CGWindowID)
     }
 
     private let preferences: Preferences
@@ -33,7 +40,11 @@ final class BuddyController {
     private var wasSleeping = false
     private var greeted = false
 
-    private var perch: Perch = .bottom
+    private var spot: Spot = .edge(.bottom)
+    /// How far along his window's top edge he stands, 0...1, so he keeps his
+    /// place when the window is resized.
+    private var sillFraction: CGFloat = 0.5
+    private var sillTimer: Timer?
     /// Where he is walking to, as the character box's bottom-left in screen
     /// coordinates — *not* a panel origin. Flipping the speech bubble from one
     /// side of him to the other moves the panel out from under him, which would
@@ -100,6 +111,7 @@ final class BuddyController {
         pointer.start()
         state.startBlinking()
         scheduleIdleGesture()
+        startRidingWindows()
 
         Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
             guard let self, !self.greeted else { return }
@@ -115,6 +127,7 @@ final class BuddyController {
         stopWalking()
         wanderTimer?.invalidate()
         idleTimer?.invalidate()
+        sillTimer?.invalidate()
         savePosition(force: true)
     }
 
@@ -299,12 +312,12 @@ final class BuddyController {
 
     // MARK: - Hanging out
 
-    /// Wanders to a new perch every so often, so he drifts around the edges of
-    /// the screen over the course of a session instead of sitting in one spot.
+    /// Moves house every few minutes. Deliberately infrequent: he is furniture
+    /// that occasionally shifts, not something pacing about.
     private func scheduleWander() {
         wanderTimer?.invalidate()
         guard preferences.hangOut else { return }
-        let delay = Double.random(in: 25...70)
+        let delay = Double.random(in: 150...420)
         wanderTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             self?.wanderNow()
             self?.scheduleWander()
@@ -314,37 +327,138 @@ final class BuddyController {
     private func wanderNow() {
         guard preferences.hangOut, preferences.visible, !preferences.followCursor else { return }
         guard !state.isDragging, state.mood != .sleeping, !state.isWalking else { return }
-        walk(to: nextPerch())
+        walk(to: nextSpot())
     }
 
-    /// A spot to hang out: along the menu bar, above the Dock, or tucked against
-    /// one of the side borders.
-    private func nextPerch() -> CGPoint {
+    /// Somewhere to settle. He prefers standing on a real window, which is what
+    /// makes him look part of the desktop rather than painted on top of it;
+    /// failing that he tucks against an edge of the screen.
+    private func nextSpot() -> CGPoint {
+        if Double.random(in: 0...1) < 0.72, let target = windowSill() {
+            return target
+        }
+        return screenEdge()
+    }
+
+    /// The top edge of somebody else's window, preferring the frontmost ones.
+    private func windowSill() -> CGPoint? {
+        let box = characterBoxInPanel()
+        let candidates = WindowScanner.ledges(excluding: getpid())
+            .filter { $0.frame.width > box.width + 40 }
+        guard !candidates.isEmpty else { return nil }
+
+        // Weighted toward the front of the window list, so he tends to sit on
+        // whatever is actually in front of you.
+        let index = min(candidates.count - 1, Int(pow(Double.random(in: 0...1), 1.8) * Double(candidates.count)))
+        let ledge = candidates[index]
+
+        sillFraction = CGFloat.random(in: 0.08...0.92)
+        spot = .windowSill(ledge.windowID)
+        return CGPoint(x: sillX(on: ledge, box: box), y: ledge.topEdge)
+    }
+
+    /// Along the menu bar, above the Dock, or tucked against a side border.
+    private func screenEdge() -> CGPoint {
         guard let panel, let screen = currentScreen(for: panel.frame.origin) else {
             return panel?.frame.origin ?? .zero
         }
         let bounds = preferences.layer == .desktop ? screen.frame : screen.visibleFrame
         let box = characterBoxInPanel()
 
-        // Mostly stroll along the edge he is already on; occasionally move house.
-        if Double.random(in: 0...1) < 0.32 {
-            perch = Perch.allCases.filter { $0 != perch }.randomElement() ?? perch
+        var edge: Edge
+        if case .edge(let current) = spot {
+            // Mostly stroll along the edge he is already on.
+            edge = Double.random(in: 0...1) < 0.32
+                ? (Edge.allCases.filter { $0 != current }.randomElement() ?? current)
+                : current
+        } else {
+            edge = Edge.allCases.randomElement() ?? .bottom
         }
+        spot = .edge(edge)
 
         let inset: CGFloat = 14
-
-        switch perch {
+        switch edge {
         case .top, .bottom:
             let span = max(0, bounds.width - box.width - inset * 2)
             return CGPoint(x: bounds.minX + inset + CGFloat.random(in: 0...span),
-                           y: perch == .top ? bounds.maxY - box.height : bounds.minY)
+                           y: edge == .top ? bounds.maxY - box.height : bounds.minY)
         case .left, .right:
             let span = max(0, bounds.height - box.height - inset * 2)
             // Tucked a little past the border, as though leaning on it.
-            return CGPoint(x: perch == .left ? bounds.minX - box.width * 0.18
-                                             : bounds.maxX - box.width * 0.82,
+            return CGPoint(x: edge == .left ? bounds.minX - box.width * 0.18
+                                            : bounds.maxX - box.width * 0.82,
                            y: bounds.minY + inset + CGFloat.random(in: 0...span))
         }
+    }
+
+    private func sillX(on ledge: Ledge, box: CGRect) -> CGFloat {
+        ledge.frame.minX + sillFraction * (ledge.frame.width - box.width)
+    }
+
+    /// Drop him near the top of a window and he stands on it; drop him anywhere
+    /// else and he is just loose on the desktop.
+    private func settleWhereDropped() {
+        guard let panel else { return }
+        let box = characterBoxInPanel()
+        let feet = characterOrigin(forPanel: panel.frame.origin)
+        let centreX = feet.x + box.width / 2
+
+        // How close his feet have to land to a window's top edge to catch it.
+        let snap: CGFloat = 26
+
+        let ledge = WindowScanner.ledges(excluding: getpid())
+            .filter { $0.frame.width > box.width + 40 }
+            .filter { centreX > $0.frame.minX && centreX < $0.frame.maxX }
+            .filter { abs($0.topEdge - feet.y) < snap }
+            .min { abs($0.topEdge - feet.y) < abs($1.topEdge - feet.y) }
+
+        guard let ledge else {
+            spot = .edge(.bottom)
+            return
+        }
+
+        sillFraction = max(0, min(1, (feet.x - ledge.frame.minX) / max(1, ledge.frame.width - box.width)))
+        spot = .windowSill(ledge.windowID)
+        // Line his feet up with the edge he just caught.
+        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: CGPoint(x: feet.x, y: ledge.topEdge)),
+                                     size: panel.frame.size))
+        state.say("comfy up here")
+    }
+
+    // MARK: - Riding a window
+
+    /// Keeps him standing on his window as it is dragged, resized or raised, so
+    /// he looks attached to it rather than floating in front of it.
+    private func startRidingWindows() {
+        sillTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            self?.rideWindow()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sillTimer = timer
+    }
+
+    private func rideWindow() {
+        guard case .windowSill(let id) = spot, let panel else { return }
+        guard !state.isDragging, !state.isWalking, preferences.visible else { return }
+
+        let box = characterBoxInPanel()
+        guard let ledge = WindowScanner.ledge(for: id, excluding: getpid()),
+              ledge.frame.width > box.width + 40 else {
+            // His window closed or went away: step down onto the nearest edge.
+            spot = .edge(.bottom)
+            walk(to: screenEdge())
+            return
+        }
+
+        let target = CGPoint(x: sillX(on: ledge, box: box), y: ledge.topEdge)
+        let current = characterOrigin(forPanel: panel.frame.origin)
+        guard hypot(target.x - current.x, target.y - current.y) > 0.5 else { return }
+
+        // Snap rather than walk: he is standing on it, so he moves with it.
+        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: target), size: panel.frame.size))
+        updateBubbleSide()
+        savePosition(force: false)
     }
 
     /// `target` is a character-box origin on screen.
@@ -454,6 +568,7 @@ final class BuddyController {
     private func endDrag() {
         state.isDragging = false
         dragAnchor = nil
+        settleWhereDropped()
         updateBubbleSide()
         savePosition(force: true)
 
