@@ -44,7 +44,7 @@ right-click menu on the character himself.
 
 | Thing | How |
 | --- | --- |
-| Move him | Drag him anywhere; drop him on a window's top edge and he stands on it |
+| Move him | Drag him — he snaps onto whatever he is dragged near |
 | Make him talk | Click him, or **Say Something** |
 | Settings | Menu bar sparkle, or right-click him |
 | Send him away | **Show Buddy**, or **Quit Claude Buddy** |
@@ -73,6 +73,28 @@ small — at **Medium** he is about 66 × 44 points — so he reads as something
 living at the edge of the screen rather than a window. His speech bubble is *not* scaled
 with him, so it stays readable at any size, and it flips to hang below him when
 he is perched too high for it to fit overhead.
+
+### Where he sits
+
+He turns up standing on one of your windows, and stays put. He does not wander
+off on his own unless you ask him to.
+
+Drag him and he snaps onto the nearest place worth sitting once he is within
+about 30 points of it:
+
+| Spot | Behaviour |
+| --- | --- |
+| The top edge of any window | Slides along it, and rides the window as you drag, resize or raise it |
+| Under the menu bar | Slides left and right along the top of the screen |
+| On top of the Dock | Slides left and right along the bottom |
+| Either side of the screen | Slides up and down, tucked slightly past the border |
+
+Let go somewhere that is not near any of them and he simply stays where he was
+dropped. On a maximised window his feet stop just under the menu bar rather than
+disappearing behind it, which leaves him standing in the title bar.
+
+When the window he is standing on closes or hides, he steps down onto the
+nearest edge of the screen.
 
 ### Idle animations
 

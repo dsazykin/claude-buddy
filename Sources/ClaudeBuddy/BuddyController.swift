@@ -24,6 +24,20 @@ final class BuddyController {
         case windowSill(CGWindowID)
     }
 
+    /// Somewhere he can be dropped. Each one pins a single axis and leaves the
+    /// other free to slide, so a window's top edge behaves like a shelf he can
+    /// stand anywhere along, and the side of the screen like a wall he can slide
+    /// up and down.
+    private struct SnapTarget {
+        /// True for a shelf, which pins his feet to a height; false for a wall,
+        /// which pins his left-right position.
+        let isShelf: Bool
+        let value: CGFloat
+        /// How far the shelf or wall runs, in character-origin coordinates.
+        let extent: ClosedRange<CGFloat>
+        let spot: Spot
+    }
+
     private let preferences: Preferences
     private let state = BuddyState()
     private let pointer = PointerTracker()
@@ -35,6 +49,9 @@ final class BuddyController {
 
     private var dragAnchor: (origin: CGPoint, mouse: CGPoint)?
     private var dragDistance: CGFloat = 0
+    /// Worked out once when a drag starts: the window list does not need
+    /// re-reading on every mouse move, and stable targets feel steadier.
+    private var dragTargets: [SnapTarget] = []
     private var lastPositionSave = Date.distantPast
     private var claudeRunningSince: Date?
     private var wasSleeping = false
@@ -426,34 +443,69 @@ final class BuddyController {
         ledge.frame.minX + sillFraction * (ledge.frame.width - box.width)
     }
 
-    /// Drop him near the top of a window and he stands on it; drop him anywhere
-    /// else and he is just loose on the desktop.
-    private func settleWhereDropped() {
-        guard let panel else { return }
-        let box = characterBoxInPanel()
-        let feet = characterOrigin(forPanel: panel.frame.origin)
-        let centreX = feet.x + box.width / 2
+    // MARK: - Dropping him somewhere
 
-        // How close his feet have to land to a window's top edge to catch it.
-        let snap: CGFloat = 26
+    /// Everywhere he can be put down: the top edge of each window, and the four
+    /// sides of the screen.
+    private func snapTargets(box: CGRect) -> [SnapTarget] {
+        var targets: [SnapTarget] = []
 
-        let ledge = WindowScanner.ledges(excluding: getpid())
-            .filter { standable($0, box: box) }
-            .filter { centreX > $0.frame.minX && centreX < $0.frame.maxX }
-            .filter { abs($0.topEdge - feet.y) < snap }
-            .min { abs($0.topEdge - feet.y) < abs($1.topEdge - feet.y) }
-
-        guard let ledge else {
-            spot = .edge(.bottom)
-            return
+        for ledge in WindowScanner.ledges(excluding: getpid()) where standable(ledge, box: box) {
+            let start = ledge.frame.minX
+            let end = max(start, ledge.frame.maxX - box.width)
+            targets.append(SnapTarget(isShelf: true,
+                                      value: feetY(on: ledge, box: box),
+                                      extent: start...end,
+                                      spot: .windowSill(ledge.windowID)))
         }
 
-        sillFraction = max(0, min(1, (feet.x - ledge.frame.minX) / max(1, ledge.frame.width - box.width)))
-        spot = .windowSill(ledge.windowID)
-        // Line his feet up with the edge he just caught.
-        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: CGPoint(x: feet.x, y: feetY(on: ledge, box: box))),
-                                     size: panel.frame.size))
-        state.say("comfy up here")
+        if let panel, let screen = currentScreen(for: panel.frame.origin) {
+            let bounds = preferences.layer == .desktop ? screen.frame : screen.visibleFrame
+            let leftToRight = bounds.minX...max(bounds.minX, bounds.maxX - box.width)
+            let bottomToTop = bounds.minY...max(bounds.minY, bounds.maxY - box.height)
+
+            targets.append(SnapTarget(isShelf: true, value: bounds.minY,
+                                      extent: leftToRight, spot: .edge(.bottom)))
+            targets.append(SnapTarget(isShelf: true, value: bottomToTop.upperBound,
+                                      extent: leftToRight, spot: .edge(.top)))
+            // Tucked a little past the border, as though leaning on it.
+            targets.append(SnapTarget(isShelf: false, value: bounds.minX - box.width * 0.18,
+                                      extent: bottomToTop, spot: .edge(.left)))
+            targets.append(SnapTarget(isShelf: false, value: bounds.maxX - box.width * 0.82,
+                                      extent: bottomToTop, spot: .edge(.right)))
+        }
+
+        return targets
+    }
+
+    /// Pulls him onto the nearest place worth sitting, once he is dragged close
+    /// enough to it. Returns where he ends up and what he has caught hold of.
+    private func snap(_ origin: CGPoint) -> (CGPoint, SnapTarget?) {
+        /// How close he has to be dragged before a spot grabs him.
+        let magnet: CGFloat = 30
+        /// How far past the end of a shelf he may still catch it.
+        let overhang: CGFloat = 40
+
+        var best: (target: SnapTarget, distance: CGFloat)?
+        for target in dragTargets {
+            let along = target.isShelf ? origin.x : origin.y
+            guard along > target.extent.lowerBound - overhang,
+                  along < target.extent.upperBound + overhang else { continue }
+
+            let distance = abs((target.isShelf ? origin.y : origin.x) - target.value)
+            guard distance < magnet else { continue }
+            if best == nil || distance < best!.distance { best = (target, distance) }
+        }
+
+        guard let best else { return (origin, nil) }
+
+        let target = best.target
+        let loose = target.isShelf ? origin.x : origin.y
+        let along = min(max(loose, target.extent.lowerBound), target.extent.upperBound)
+        let settled = target.isShelf
+            ? CGPoint(x: along, y: target.value)
+            : CGPoint(x: target.value, y: along)
+        return (settled, target)
     }
 
     // MARK: - Riding a window
@@ -579,6 +631,7 @@ final class BuddyController {
         state.cancelGesture()
         dragAnchor = (panel.frame.origin, NSEvent.mouseLocation)
         dragDistance = 0
+        dragTargets = snapTargets(box: characterBoxInPanel())
         state.isDragging = true
         isFollowing = false
     }
@@ -592,14 +645,25 @@ final class BuddyController {
         let dx = mouse.x - anchor.mouse.x
         let dy = mouse.y - anchor.mouse.y
         dragDistance = max(dragDistance, hypot(dx, dy))
-        let origin = CGPoint(x: anchor.origin.x + dx, y: anchor.origin.y + dy)
-        panel.setFrameOrigin(clamped(origin, size: panel.frame.size))
+
+        let loose = characterOrigin(forPanel: CGPoint(x: anchor.origin.x + dx, y: anchor.origin.y + dy))
+        let (settled, target) = snap(loose)
+
+        // Kept live rather than worked out on drop, so he visibly clicks into
+        // place under the cursor.
+        spot = target?.spot ?? .edge(.bottom)
+        if let target, case .windowSill = target.spot {
+            let run = target.extent.upperBound - target.extent.lowerBound
+            sillFraction = run > 0 ? (settled.x - target.extent.lowerBound) / run : 0.5
+        }
+
+        panel.setFrameOrigin(clamped(panelOrigin(forCharacter: settled), size: panel.frame.size))
     }
 
     private func endDrag() {
         state.isDragging = false
         dragAnchor = nil
-        settleWhereDropped()
+        dragTargets = []
         updateBubbleSide()
         savePosition(force: true)
 
@@ -607,6 +671,7 @@ final class BuddyController {
         if dragDistance < 4 {
             speakRandomly()
         } else {
+            if isOnSill { state.say("comfy up here") }
             // Dropped somewhere new: settle in before wandering off again.
             scheduleWander()
         }
