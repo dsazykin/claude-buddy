@@ -43,7 +43,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         watchItem = item("Watch The Cursor", #selector(toggleWatch))
         followItem = item("Follow The Cursor", #selector(toggleFollow))
-        hangOutItem = item("Hang Around The Edges", #selector(toggleHangOut))
+        hangOutItem = item("Hang Around The Desktop", #selector(toggleHangOut))
         reactItem = item("React To Claude Code", #selector(toggleReact))
         clickThroughItem = item("Click Through Him", #selector(toggleClickThrough))
         [watchItem, followItem, hangOutItem, reactItem, clickThroughItem].forEach { menu.addItem($0!) }

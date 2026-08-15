@@ -1,10 +1,10 @@
 # Claude Buddy
 
-A little desktop companion for macOS. He loiters around the edges of your
-screen — along the menu bar, above the Dock, leaning on a window border — walks
-off to a new spot every so often, watches your cursor, naps when you walk away,
-perks up when you start a Claude Code session, and says something when you poke
-him.
+A little desktop companion for macOS. He stands on the top edge of your windows
+and rides them around as you drag them, wanders off to a new window every few
+minutes, tucks against the menu bar or the Dock when there is nothing to sit on,
+watches your cursor, naps when you walk away, perks up when you start a Claude
+Code session, and says something when you poke him.
 
 He is a chunky coral pixel character in the style of the Claude Code mascot.
 
@@ -44,7 +44,7 @@ right-click menu on the character himself.
 
 | Thing | How |
 | --- | --- |
-| Move him | Drag him anywhere |
+| Move him | Drag him anywhere; drop him on a window's top edge and he stands on it |
 | Make him talk | Click him, or **Say Something** |
 | Settings | Menu bar sparkle, or right-click him |
 | Send him away | **Show Buddy**, or **Quit Claude Buddy** |
@@ -54,9 +54,10 @@ Menu options:
 - **Watch The Cursor** — his eyes follow the pointer and he leans toward it.
 - **Follow The Cursor** — he also walks after it when it gets far away, and
   stops at a polite distance. Off by default.
-- **Hang Around The Edges** — every 25–70 seconds he ambles off to a new perch
-  along the menu bar, above the Dock, or against a side border. On by default;
-  turning on **Follow The Cursor** takes precedence over it.
+- **Hang Around The Desktop** — every few minutes he ambles off to a new spot.
+  Usually that is the top edge of one of your windows; otherwise the menu bar,
+  above the Dock, or against a side border. On by default; turning on **Follow
+  The Cursor** takes precedence over it.
 - **React To Claude Code** — see below.
 - **Click Through Him** — he becomes decorative; clicks pass through to whatever
   is behind him. Control him from the menu bar while this is on.
@@ -152,6 +153,7 @@ holds the idle animations and their durations.
 | `Views/Layout.swift` | Panel geometry: the character scales, the bubble does not |
 | `StatusItemController.swift` | Menu bar item and the shared menu |
 | `Sensors/PointerTracker.swift` | Polls the pointer at 30 Hz |
+| `Sensors/WindowScanner.swift` | Finds other apps' windows to stand on, from bounds alone |
 | `Sensors/ProcessScanner.swift` | `sysctl` process list and per-process CPU time |
 | `Sensors/ClaudeActivityMonitor.swift` | Turns that into running/busy, with debouncing |
 | `Model/BuddyState.swift` | Observable state the views draw from |
